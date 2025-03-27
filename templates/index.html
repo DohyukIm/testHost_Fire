@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>산불 정보 실시간 대시보드</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Nanum Gothic', 'Malgun Gothic', sans-serif;
+            background-color: #f8f9fa;
+            color: #343a40;
+        }
+        .container {
+            max-width: 1200px; 
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #dc3545;
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .fire-card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            transition: transform 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .fire-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        .status-badge {
+            position: absolute;
+            top: 0;
+            right: 0;
+            padding: 6px 12px;
+            border-radius: 0 0 0 8px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            z-index: 10; /* 다른 요소보다 위에 표시 */
+        }
+        .status-진행중 {
+            background-color: #dc3545;
+            color: white;
+        }
+        .status-진화중 {
+            background-color: #fd7e14;
+            color: white;
+        }
+        .status-진화완료 {
+            background-color: #198754;
+            color: white;
+        }
+        .card-body {
+            padding: 20px;
+            /* 상태 배지와 겹치지 않도록 상단 패딩 증가 */
+            padding-top: 40px;
+        }
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #343a40;
+            /* 긴 제목도 잘 표시되도록 */
+            word-break: keep-all;
+            overflow-wrap: break-word;
+        }
+        .info-row {
+            display: flex;
+            margin-bottom: 8px;
+        }
+        .info-label {
+            flex: 0 0 100px;
+            font-weight: bold;
+            color: #6c757d;
+        }
+        .info-value {
+            flex: 1;
+        }
+        .view-btn {
+            background-color: #0d6efd;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 10px 0;
+            font-weight: bold;
+            width: 100%;
+            text-align: center;
+            text-decoration: none;
+            display: block;
+            margin-top: 15px;
+        }
+        .view-btn:hover {
+            background-color: #0b5ed7;
+            color: white;
+        }
+        .search-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        .filters {
+            display: flex;
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .update-info {
+            text-align: right;
+            margin-bottom: 10px;
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        .loading-spinner {
+            width: 3rem;
+            height: 3rem;
+        }
+        .service-notice {
+            background-color: #e2f3ff;
+            border: 1px solid #90caf9;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        @media (max-width: 768px) {
+            .filters {
+                flex-direction: column;
+                gap: 10px;
+            }
+            .info-label {
+                flex: 0 0 80px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="text-center mb-0">산불 정보 실시간 대시보드</h1>
+        </div>
+        
+        <div class="search-container">
+            <div class="row">
+                <div class="col-md-8">
+                    <input type="text" id="searchInput" class="form-control" placeholder="위치, 산림 이름 등으로 검색...">
+                </div>
+                <div class="col-md-4">
+                    <button id="searchBtn" class="btn btn-primary w-100">검색</button>
+                </div>
+            </div>
+            <div class="filters">
+                <select id="statusFilter" class="form-select">
+                    <option value="all">상태: 전체</option>
+                    <option value="진행중">진행중</option>
+                    <option value="진화중">진화중</option>
+                    <option value="진화완료">진화완료</option>
+                </select>
+                <select id="regionFilter" class="form-select">
+                    <option value="all">지역: 전체</option>
+                    <!-- 지역 옵션은 동적으로 채워질 예정 -->
+                </select>
+                <select id="sortOption" class="form-select">
+                    <option value="latest">최근 발생순</option>
+                    <option value="oldest">오래된 발생순</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="update-info">
+            <span id="lastUpdateTime">마지막 업데이트: 로딩 중...</span>
+            <button id="refreshBtn" class="btn btn-sm btn-outline-secondary ms-2">새로고침</button>
+        </div>
+        
+        <div class="loading" id="loadingIndicator">
+            <div class="spinner-border loading-spinner text-danger" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">산불 정보를 불러오는 중입니다...</p>
+        </div>
+        
+        <div id="fireCardsContainer" class="row">
+            <!-- 산불 카드가 여기에 동적으로 추가됩니다 -->
+        </div>
+        
+        <div class="mt-4 text-center">
+            <p>※ 본 정보는 5분마다 자동으로 업데이트됩니다.</p>
+            <p>※ 산불 상황도는 산림청 제공 정보입니다.</p>
+        </div>
+    </div>
+
+    <script>
+        // 산불 정보를 저장할 배열
+        let forestFiresData = [];
+        // 지역 정보를 저장할 Set
+        const regions = new Set();
+        
+        // 페이지 로드 시 실행
+        document.addEventListener('DOMContentLoaded', function() {
+            // 초기 데이터 로드
+            fetchForestFiresData();
+            
+            // 5분(300,000ms)마다 데이터 업데이트
+            setInterval(fetchForestFiresData, 300000);
+            
+            // 검색 버튼 이벤트 리스너
+            document.getElementById('searchBtn').addEventListener('click', filterFireData);
+            
+            // 새로고침 버튼 이벤트 리스너
+            document.getElementById('refreshBtn').addEventListener('click', fetchForestFiresData);
+            
+            // 필터 변경 이벤트 리스너
+            document.getElementById('statusFilter').addEventListener('change', filterFireData);
+            document.getElementById('regionFilter').addEventListener('change', filterFireData);
+            document.getElementById('sortOption').addEventListener('change', filterFireData);
+            
+            // 검색 입력란에서 엔터키 이벤트 리스너
+            document.getElementById('searchInput').addEventListener('keyup', function(event) {
+                if (event.key === 'Enter') {
+                    filterFireData();
+                }
+            });
+        });
+        
+        // 산불 정보 가져오기
+        function fetchForestFiresData() {
+            showLoading(true);
+            
+            // API 호출 부분 수정
+            fetch('/api/forest-fires')
+                .then(response => {
+                    console.log("API 응답 상태:", response.status);
+                    if (!response.ok) {
+                        throw new Error(`HTTP 오류! 상태: ${response.status}`);
+                    }
+                    return response.text();
+                })
+                .then(data => {
+                    console.log("API 데이터 수신 성공, 데이터 길이:", data.length);
+                    
+                    // XML 파싱
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(data, "text/xml");
+                    
+                    // DATA 태그 찾기
+                    const dataElements = xmlDoc.getElementsByTagName("DATA");
+                    console.log("찾은 DATA 태그 수:", dataElements.length);
+                    
+                    // 산불 데이터 배열 초기화
+                    forestFiresData = [];
+                    regions.clear();
+                    
+                    // 각 DATA 요소 처리
+                    for(let i = 0; i < dataElements.length; i++) {
+                        const dataElement = dataElements[i];
+                        
+                        // 필요한 정보 추출
+                        const getId = tag => {
+                            const element = dataElement.getElementsByTagName(tag)[0];
+                            return element ? element.textContent : "";
+                        };
+                        
+                        // 기본 정보 추출
+                        const id = getId("frfrInfoId");
+                        const status = getId("frfrPrgrsStcdNm") || "상태정보 없음";
+                        
+                        // 날짜와 시간 정보 추출 및 포맷팅
+                        const dateStr = getId("frfrSttmnDt") || "";
+                        const timeStr = getId("frfrSttmnHms") || "";
+                        const receivedTime = formatDateTime(dateStr, timeStr);
+                        
+                        // 각 ID에 대한 상세 정보 및 위치 정보 가져오기
+                        fetchLocationData(id, status, receivedTime, dateStr, timeStr);
+                    }
+                })
+                .catch(error => {
+                    console.error("API 호출 오류:", error);
+                    showLoading(false);
+                    
+                    // 미리 정의된 데이터 사용 (API 호출 실패시)
+                    usePresetData();
+                    
+                    // 오류 메시지 표시
+                    showServiceNotice("API 연결에 문제가 있어 샘플 데이터를 표시합니다.", "warning");
+                });
+        }
+
+        // 각 산불 ID에 대한 상세 페이지에서 위치 정보 가져오기
+        function fetchLocationData(id, status, receivedTime, dateStr, timeStr) {
+            // 상세 정보 URL
+            const detailUrl = `/api/forest-fire-detail?id=${id}`;
+            
+            // 위치 정보 요청
+            fetch(detailUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`상세 정보 가져오기 오류: ${response.status}`);
+                    }
+                    return response.text();
+                })
+                .then(htmlText => {
+                    // HTML 파싱
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(htmlText, "text/html");
+                    
+                    // 발생위치 찾기 (실제 구현은 HTML 구조에 따라 달라질 수 있음)
+                    let location = "위치 정보 없음";
+                    const locationRows = doc.querySelectorAll("tr");
+                    
+                    for (const row of locationRows) {
+                        const cells = row.querySelectorAll("th, td");
+                        for (const cell of cells) {
+                            if (cell.textContent.includes("발생위치")) {
+                                const locationCell = cell.nextElementSibling;
+                                if (locationCell) {
+                                    location = locationCell.textContent.trim();
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // 지역 추출 (첫 번째 시/도)
+                    let region = "지역 정보 없음";
+                    const regionMatch = location.match(/^[^\s]+/);
+                    if (regionMatch) {
+                        region = regionMatch[0];
+                    }
+                    
+                    regions.add(region);
+                    
+                    // 산불 객체 생성
+                    const fireInfo = {
+                        id: id,
+                        location: location,
+                        region: region,
+                        receivedTime: receivedTime,
+                        originalTime: dateStr + timeStr,
+                        status: getStatusLabel(status)
+                    };
+                    
+                    forestFiresData.push(fireInfo);
+                    
+                    // 지역 필터 업데이트
+                    updateRegionFilterOptions();
+                    
+                    // 데이터 필터링 및 표시
+                    filterFireData();
+                    
+                    // 모든 데이터가 로드되면 로딩 표시기 숨기기
+                    if (forestFiresData.length >= document.getElementsByTagName("DATA").length) {
+                        showLoading(false);
+                        updateLastUpdateTime();
+                        showServiceNotice("API에서 실시간 산불 정보를 성공적으로 가져왔습니다.", "success");
+                    }
+                })
+                .catch(error => {
+                    console.error(`ID ${id}에 대한 상세 정보 가져오기 실패:`, error);
+                    
+                    // 기본 정보만으로 산불 객체 생성
+                    const fireInfo = {
+                        id: id,
+                        location: "상세 정보 로드 실패",
+                        region: "알 수 없음",
+                        receivedTime: receivedTime,
+                        originalTime: dateStr + timeStr,
+                        status: getStatusLabel(status)
+                    };
+                    
+                    forestFiresData.push(fireInfo);
+                    filterFireData();
+                    
+                    // 모든 데이터가 로드되면 로딩 표시기 숨기기
+                    if (forestFiresData.length >= document.getElementsByTagName("DATA").length) {
+                        showLoading(false);
+                        updateLastUpdateTime();
+                    }
+                });
+        }
+        
+        // 날짜 및 시간 포맷팅
+        function formatDateTime(dateStr, timeStr) {
+            if (!dateStr) return "";
+            
+            try {
+                // 날짜 형식 변환 (YYYYMMDD -> YYYY-MM-DD)
+                const year = dateStr.substring(0, 4);
+                const month = dateStr.substring(4, 6);
+                const day = dateStr.substring(6, 8);
+                
+                // 시간 형식 변환 (HHMMSS -> HH:MM)
+                let hour = "00";
+                let minute = "00";
+                
+                if (timeStr && timeStr.length >= 4) {
+                    hour = timeStr.substring(0, 2);
+                    minute = timeStr.substring(2, 4);
+                }
+                
+                return `${year}-${month}-${day} ${hour}:${minute}`;
+            } catch (e) {
+                console.error("날짜/시간 변환 오류:", e);
+                return dateStr;
+            }
+        }
+        
+        // 상태 텍스트 변환
+        function getStatusLabel(statusText) {
+            if (statusText.includes("진행")) return "진행중";
+            if (statusText.includes("진화중")) return "진화중";
+            if (statusText.includes("완료") || statusText.includes("종료")) return "진화완료";
+            return statusText;
+        }
+        
+        // 미리 정의된 데이터 사용
+        function usePresetData() {
+            console.log("API 호출 실패: 미리 정의된 데이터를 사용합니다");
+            
+            // 데이터 초기화
+            forestFiresData = [];
+            regions.clear();
+            
+            // 각 산불 ID에 대한 직접 URL 생성 및 데이터 설정
+            const sampleData = [
+                {
+                    id: '359944',
+                    location: '경상북도 의성군 안계면 구산리 61일대',
+                    region: '경상북도',
+                    receivedTime: '2025-03-22 11:24',
+                    originalTime: '20250322112400',
+                    status: '진화중'
+                },
+                {
+                    id: '359264',
+                    location: '강원도 홍천군 내면',
+                    region: '강원도',
+                    receivedTime: '2025-03-26 15:42',
+                    originalTime: '20250326154200',
+                    status: '진화중'
+                },
+                {
+                    id: '359324',
+                    location: '전라남도 구례군 산동면',
+                    region: '전라남도',
+                    receivedTime: '2025-03-25 22:30',
+                    originalTime: '20250325223000',
+                    status: '진화완료'
+                },
+                {
+                    id: '363764',
+                    location: '충청북도 진천군',
+                    region: '충청북도',
+                    receivedTime: '2025-03-24 13:17',
+                    originalTime: '20250324131700',
+                    status: '진행중'
+                },
+                {
+                    id: '363884',
+                    location: '경기도 가평군',
+                    region: '경기도',
+                    receivedTime: '2025-03-23 11:21',
+                    originalTime: '20250323112100',
+                    status: '진화중'
+                }
+            ];
+            
+            // 샘플 데이터 설정
+            forestFiresData = sampleData;
+            
+            // 지역 정보 설정
+            sampleData.forEach(item => {
+                regions.add(item.region);
+            });
+            
+            // 지역 필터 업데이트
+            updateRegionFilterOptions();
+            
+            // 데이터 필터링 및 표시
+            filterFireData();
+            
+            // 마지막 업데이트 시간 표시
+            const now = new Date();
+            document.getElementById('lastUpdateTime').textContent = `마지막 업데이트: ${now.toLocaleString()} (샘플 데이터)`;
+        }
+        
+        // 서비스 알림 표시
+        function showServiceNotice(message, type = "info") {
+            // 기존 알림 제거
+            const existingNotice = document.querySelector('.service-notice');
+            if (existingNotice) {
+                existingNotice.parentElement.remove();
+            }
+            
+            // 타입에 따른 스타일 설정
+            let bgColor, borderColor, textColor;
+            switch(type) {
+                case "success":
+                    bgColor = "#d4edda";
+                    borderColor = "#c3e6cb";
+                    textColor = "#155724";
+                    break;
+                case "warning":
+                    bgColor = "#fff3cd";
+                    borderColor = "#ffeeba";
+                    textColor = "#856404";
+                    break;
+                case "danger":
+                    bgColor = "#f8d7da";
+                    borderColor = "#f5c6cb";
+                    textColor = "#721c24";
+                    break;
+                default: // info
+                    bgColor = "#e2f3ff";
+                    borderColor = "#90caf9";
+                    textColor = "#0c5460";
+            }
+            
+            const container = document.getElementById('fireCardsContainer');
+            const noticeElement = document.createElement('div');
+            noticeElement.className = 'col-12 mb-4';
+            noticeElement.innerHTML = `
+                <div class="service-notice" style="background-color: ${bgColor}; border-color: ${borderColor}; color: ${textColor};">
+                    <strong>안내:</strong> ${message}
+                </div>
+            `;
+            container.insertBefore(noticeElement, container.firstChild);
+        }
+        
+        // 지역 필터 옵션 업데이트
+        function updateRegionFilterOptions() {
+            const regionFilter = document.getElementById('regionFilter');
+            
+            // 기존 옵션 중 첫 번째(전체)를 제외하고 모두 제거
+            while (regionFilter.options.length > 1) {
+                regionFilter.remove(1);
+            }
+            
+            // 정렬된 지역 옵션 추가
+            [...regions].sort().forEach(region => {
+                const option = document.createElement('option');
+                option.value = region;
+                option.textContent = region;
+                regionFilter.appendChild(option);
+            });
+        }
+        
+        // 산불 데이터 필터링 및 정렬
+        function filterFireData() {
+            const searchText = document.getElementById('searchInput').value.toLowerCase();
+            const statusFilter = document.getElementById('statusFilter').value;
+            const regionFilter = document.getElementById('regionFilter').value;
+            const sortOption = document.getElementById('sortOption').value;
+            
+            // 데이터 필터링
+            let filteredData = forestFiresData.filter(fire => {
+                const matchesSearch = !searchText || 
+                    fire.location.toLowerCase().includes(searchText);
+                const matchesStatus = statusFilter === 'all' || fire.status === statusFilter;
+                const matchesRegion = regionFilter === 'all' || fire.region === regionFilter;
+                
+                return matchesSearch && matchesStatus && matchesRegion;
+            });
+            
+            // 데이터 정렬
+            filteredData.sort((a, b) => {
+                const timeA = a.originalTime || "";
+                const timeB = b.originalTime || "";
+                
+                if (sortOption === 'latest') {
+                    return timeB.localeCompare(timeA); // 최신순
+                } else {
+                    return timeA.localeCompare(timeB); // 오래된순
+                }
+            });
+            
+            // 필터링된 데이터로 카드 생성
+            renderFireCards(filteredData);
+        }
+        
+        // 산불 카드 렌더링
+        function renderFireCards(fires) {
+            const container = document.getElementById('fireCardsContainer');
+            
+            // 기존 알림 요소 보존
+            const noticeElement = container.querySelector('.service-notice')?.parentElement;
+            
+            // 카드 컨테이너 초기화
+            container.innerHTML = '';
+            
+            // 알림 요소가 있으면 다시 추가
+            if (noticeElement) {
+                container.appendChild(noticeElement);
+            }
+            
+            if (fires.length === 0) {
+                container.innerHTML += `
+                    <div class="col-12 text-center">
+                        <div class="alert alert-warning">
+                            <h4>검색 결과가 없습니다.</h4>
+                            <p>다른 검색어나 필터 조건을 시도해보세요.</p>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+            
+            fires.forEach(fire => {
+                const card = document.createElement('div');
+                card.className = 'col-md-6 col-lg-4 mb-4';
+                
+                card.innerHTML = `
+                    <div class="fire-card">
+                        <div class="status-badge status-${fire.status}">${fire.status}</div>
+                        <div class="card-body">
+                            <h2 class="card-title">${fire.location}</h2>
+                            <div class="info-row">
+                                <div class="info-label">접수일시</div>
+                                <div class="info-value">${fire.receivedTime}</div>
+                            </div>
+                            <div class="info-row">
+                                <div class="info-label">ID</div>
+                                <div class="info-value">${fire.id}</div>
+                            </div>
+                            <a href="https://fd.forest.go.kr/ffas/pubConn/publicSttBrdView.do?frfrInfoId=${fire.id}" target="_blank" class="view-btn">상황도 보기</a>
+                        </div>
+                    </div>
+                `;
+                
+                container.appendChild(card);
+            });
+        }
+        
+        // 마지막 업데이트 시간 표시
+        function updateLastUpdateTime() {
+            const now = new Date();
+            const formattedTime = `${now.getFullYear()}-${padZero(now.getMonth() + 1)}-${padZero(now.getDate())} ${padZero(now.getHours())}:${padZero(now.getMinutes())}:${padZero(now.getSeconds())}`;
+            document.getElementById('lastUpdateTime').textContent = `마지막 업데이트: ${formattedTime}`;
+        }
+        
+        // 숫자에 0 채우기
+        function padZero(num) {
+            return num.toString().padStart(2, '0');
+        }
+        
+        // 로딩 표시 함수
+        function showLoading(show) {
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            if (show) {
+                loadingIndicator.style.display = 'block';
+            } else {
+                loadingIndicator.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
